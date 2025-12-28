@@ -1,0 +1,1 @@
+Built a production-ready REST API using FastAPI, PostgreSQL, and JWT authentication, deployed on AWS with Docker and CI/CD.
