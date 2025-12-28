@@ -47,12 +47,6 @@ const Login = () => {
               type="password"
               required
             />
-            <TextInputFormAuth
-              name="password2"
-              placeholder="Confirm Password"
-              type="password"
-              required
-            />
             <ButtonSubmitFormAuth text="Login" />
           </form>
 
