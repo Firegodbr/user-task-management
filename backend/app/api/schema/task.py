@@ -12,17 +12,16 @@ class TaskElement(BaseModel):
 
 class TaskListResponse(BaseModel):
     success: bool
-    user_id: int
     tasks: List[TaskElement]
-    error: Optional[str] = None
+    error: str | None = None
+
 
 class TaskResponse(BaseModel):
     success: bool
-    user_id: Optional[int] = None
-    tasks: TaskElement
-    error: Optional[str] = None
+    task: TaskElement | None = None
+    error: str | None = None
+
 
 class TaskPost(BaseModel):
-    user_id: Annotated[int, Field(description="The user ID", gt=0)]
     desc: Annotated[str, Field(description="Task description", min_length=1)]
     date: Annotated[date, Field(description="Due date")]

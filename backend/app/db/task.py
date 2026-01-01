@@ -2,6 +2,7 @@ from .db import Task, User
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import update, delete
 from sqlalchemy.future import select
+from app.api.schema.task import TaskPost
 from loguru import logger
 from typing import Optional
 from datetime import date
@@ -27,29 +28,20 @@ async def add_task(db: AsyncSession, user_id: int, task_desc: str, task_date: da
         raise
 
 
-async def put_task(db: AsyncSession, task_id: int, task: Task) -> bool:
-    existing_task = get_task(db, task_id)
+async def put_task(db: AsyncSession, task_id: int, task: TaskPost) -> bool:
+    task_db = await get_task(db, task_id)
 
-    if existing_task:
-        await db.execute(
-            update(Task)
-            .where(Task.id == task_id)
-            .values(task=task.task, date=task.date)
-        )
-        await db.commit()
-        return True
-    else:
-        logger.error(f"Task with id {task_id} not found")
-        raise ValueError("Task not found")
+    await db.execute(
+        update(Task)
+        .where(Task.id == task_id)
+        .values(task=task.desc, date=task.date)
+    )
+    await db.commit()
+    await db.refresh(task_db)
+    return task_db
 
 
 async def delete_task(db: AsyncSession, task_id: int) -> bool:
-    task = get_task(db, task_id)
-
-    if task:
-        await db.execute(delete(Task).where(Task.id == task_id))
-        await db.commit()
-        return True
-    else:
-        logger.error(f"Task with id {task_id} not found")
-        raise ValueError("Task not found")
+    await db.execute(delete(Task).where(Task.id == task_id))
+    await db.commit()
+    return True
