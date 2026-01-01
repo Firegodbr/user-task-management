@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Date, ForeignKey, inspect
+from sqlalchemy import Column, Integer, String, Date, ForeignKey, inspect, Boolean
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
@@ -16,8 +16,9 @@ class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
     username = Column(String, nullable=False)
-    password = Column(String, nullable=False)
+    hashed_password = Column(String, nullable=False)
     role = Column(String, default="user")
+    disabled = Column(Boolean, default=False)
     tasks = relationship("Task", back_populates="user")
 
 
@@ -62,5 +63,3 @@ AsyncSessionLocal = sessionmaker(
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as db:
         yield db
-
-

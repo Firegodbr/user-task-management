@@ -4,6 +4,7 @@ from loguru import logger
 from app.db.db import create_db, engine
 from app.api.routes.task import router as task_router
 from app.api.routes.user import router as user_router
+from app.api.routes.auth import router as auth_router
 
 
 async def lifespan(app: FastAPI):
@@ -23,6 +24,7 @@ async def root_call():
     return RedirectResponse("/docs")
 app.include_router(task_router, prefix="/tasks")
 app.include_router(user_router, prefix="/user")
+app.include_router(auth_router, prefix="/auth")
 
 if __name__ == "__main__":
     import uvicorn
