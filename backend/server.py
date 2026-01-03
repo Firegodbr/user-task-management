@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from loguru import logger
 from app.db.db import create_db, engine
@@ -17,6 +18,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="User task management API",
               docs_url="/docs", redoc_url="/redocs", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/", tags=["Root"])

@@ -1,9 +1,11 @@
 import PageWrapper from "../../components/PageWrapper";
 import { Link } from "react-router";
-import { useFormState } from "react-dom";
 import { toast } from "react-toastify";
 import TextInputFormAuth from "../../components/Form/TextInputFormAuth";
 import ButtonSubmitFormAuth from "../../components/Form/ButtonSubmitFormAuth";
+import api from "../../lib/api";
+import { useCallback, useActionState, startTransition } from "react";
+import { validateRegistration } from "../../lib/validation";
 type FormState = {
   username: string;
   password: string;
@@ -11,30 +13,42 @@ type FormState = {
 };
 
 const Register = () => {
-  const handleSubmit = async (
-    _previousState: FormState | null,
-    formData: FormData
-  ): Promise<null> => {
-    const username = String(formData.get("username") ?? "");
-    const password = String(formData.get("password") ?? "");
-    const password2 = String(formData.get("password2") ?? "");
+  const handleSubmit = useCallback(
+    async (
+      _previousState: FormState | null,
+      formData: FormData
+    ): Promise<null> => {
+      const username = String(formData.get("username") ?? "");
+      const password = String(formData.get("password") ?? "");
+      const password2 = String(formData.get("password2") ?? "");
+      if (!(await validateRegistration(username, password, password2)))
+        return null;
+      const formDataSend = new FormData();
+      formDataSend.append("username", username);
+      formDataSend.append("password", password);
 
-    if (password !== password2) {
-      toast.error("Passwords do not match");
+      try {
+        const response = await api.post("/auth/register", formDataSend, {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        });
+        if (response.status === 200) {
+          toast.success("Registration successful");
+        }
+      } catch (e: unknown) {
+        if (e instanceof Error) console.error(e.message);
+      }
       return null;
-    }
+    },
+    []
+  );
 
-    console.log(username);
-    toast.success("Registration successful");
-    return null;
-  };
-
-  const [_formState, formAction] = useFormState(handleSubmit, {
+  const [_formState, formAction] = useActionState(handleSubmit, {
     username: "",
     password: "",
     password2: "",
   });
-
   return (
     <PageWrapper>
       <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
@@ -44,7 +58,7 @@ const Register = () => {
             onSubmit={(e) => {
               e.preventDefault();
               const data = new FormData(e.currentTarget);
-              formAction(data);
+              startTransition(() => formAction(data));
             }}
             className="flex flex-col gap-4"
           >

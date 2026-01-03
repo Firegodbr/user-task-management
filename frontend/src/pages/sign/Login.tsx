@@ -1,24 +1,44 @@
 import PageWrapper from "../../components/PageWrapper";
 import { Link } from "react-router";
-import { useFormState } from "react-dom";
+import { useActionState, startTransition, useCallback } from "react";
 import TextInputFormAuth from "../../components/Form/TextInputFormAuth";
 import ButtonSubmitFormAuth from "../../components/Form/ButtonSubmitFormAuth";
+import api from "../../lib/api";
+import { useAuth } from "../../context/AuthContext";
 interface FormState {
   username: string;
   password: string;
 }
 
 const Login = () => {
-  const handleSubmit = async (
-    _previousState: FormState | undefined,
-    formData: FormData
-  ): Promise<FormState> => {
-    const username = String(formData.get("username") ?? "");
-    const password = String(formData.get("password") ?? "");
-    return { username, password };
-  };
+  const { login } = useAuth();
+  const handleSubmit = useCallback(
+    async (
+      _previousState: FormState | undefined,
+      formData: FormData
+    ): Promise<FormState> => {
+      const username = String(formData.get("username") ?? "");
+      const password = String(formData.get("password") ?? "");
 
-  const [_formState, formAction] = useFormState(handleSubmit, {
+      try {
+        const response = await api.post("/auth/token", formData, {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        });
+        if (response.status === 200) {
+          const { access_token } = response.data;
+          login(access_token);
+        }
+      } catch (error: unknown) {
+        if (error instanceof Error) console.log(error.message);
+      }
+      return { username, password };
+    },
+    []
+  );
+
+  const [_formState, formAction] = useActionState(handleSubmit, {
     username: "",
     password: "",
   });
@@ -32,7 +52,7 @@ const Login = () => {
             onSubmit={(e) => {
               e.preventDefault();
               const data = new FormData(e.currentTarget);
-              formAction(data);
+              startTransition(() => formAction(data));
             }}
             className="flex flex-col gap-4"
           >
