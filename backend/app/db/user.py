@@ -1,4 +1,5 @@
-from .db import Task, User
+from app.models.user import User
+from app.models.task import Task
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import update, delete
 from sqlalchemy.future import select

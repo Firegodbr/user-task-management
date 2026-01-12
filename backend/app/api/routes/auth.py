@@ -3,19 +3,24 @@ from fastapi import Body, Depends, Form, HTTPException, status, Query
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from app.db.db import get_session
 from app.db.user import add_user, get_username
+from app.core.security import get_password_hash
 from typing import Annotated
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.schema.auth import Token, User, RegisterRequest, ResponseBoolean
 from app.core.settings import settings
-from app.utils.auth import create_access_token, authenticate_user, get_current_active_user, hash_password
+from app.utils.auth import create_access_token, authenticate_user, get_current_active_user
+from app.core.security import hash_password
 from sqlalchemy.exc import SQLAlchemyError
 from datetime import timedelta
 from loguru import logger
 router = APIRouter(tags=["Auth"])
 
 
-@router.post("/register", response_model=User)
+@router.post("/register", response_model=User, status_code=status.HTTP_201_CREATED)
 async def register_user(form_data: RegisterRequest = Depends(RegisterRequest.as_form), db: AsyncSession = Depends(get_session)):
+    exist_user = await get_username(db, form_data.username)
+    if exist_user:
+        raise HTTPException(detail="User already exists", status_code=400)
     user = await add_user(db, form_data.username, hash_password(form_data.password))
     return user
 

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 import re
 from fastapi import Form
 
@@ -12,10 +12,7 @@ class User(BaseModel):
     username: str
     role: str | None = None
     disabled: bool
-
-    class Config():
-        from_attributes = True
-
+    model_config = ConfigDict(from_attributes=True)
 
 class UserInDB(User):
     id: int

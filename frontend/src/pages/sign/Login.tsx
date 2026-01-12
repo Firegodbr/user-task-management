@@ -1,5 +1,5 @@
 import PageWrapper from "../../components/PageWrapper";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { useActionState, startTransition, useCallback } from "react";
 import TextInputFormAuth from "../../components/Form/TextInputFormAuth";
 import ButtonSubmitFormAuth from "../../components/Form/ButtonSubmitFormAuth";
@@ -12,6 +12,7 @@ interface FormState {
 
 const Login = () => {
   const { login } = useAuth();
+  const navigate = useNavigate();
   const handleSubmit = useCallback(
     async (
       _previousState: FormState | undefined,
@@ -29,6 +30,7 @@ const Login = () => {
         if (response.status === 200) {
           const { access_token } = response.data;
           login(access_token);
+          navigate("/dashboard")
         }
       } catch (error: unknown) {
         if (error instanceof Error) console.log(error.message);

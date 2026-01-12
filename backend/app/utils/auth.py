@@ -2,32 +2,17 @@ import jwt
 from jwt.exceptions import InvalidTokenError
 from fastapi.security import OAuth2PasswordBearer
 from fastapi import HTTPException, Depends, status
-from pwdlib import PasswordHash
-from app.db.user import get_username, get_user
+from app.db.user import get_username
 from app.db.db import get_session
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from app.core.settings import settings
 from app.api.schema.auth import TokenData, User
-import hmac
-import hashlib
+from app.core.security import verify_password
+from loguru import logger
 
-password_hash = PasswordHash.recommended()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
-
-
-def hash_password(password: str):
-    return hmac.new(settings.SECRET_KEY.encode("utf-8"), password.encode("utf-8"), hashlib.sha256).hexdigest()
-
-
-def verify_password(plain_password: str, hashed_password: str):
-    pw = hash_password(plain_password)
-    return pw == hashed_password
-
-
-def get_password_hash(password: str):
-    return password_hash.hash(password)
 
 
 async def authenticate_user(db: AsyncSession, username: str, password: str):

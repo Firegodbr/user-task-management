@@ -1,5 +1,6 @@
-from .db import Task, User
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.models.user import User
+from app.models.task import Task
 from sqlalchemy import update, delete
 from sqlalchemy.future import select
 from app.api.schema.task import TaskPost
@@ -7,9 +8,11 @@ from loguru import logger
 from typing import Optional
 from datetime import date
 
+
 async def get_task(db: AsyncSession, task_id: int) -> Optional[Task]:
     result = await db.execute(select(Task).filter(Task.id == task_id))
     return result.scalars().first()
+
 
 async def add_task(db: AsyncSession, user_id: int, task_desc: str, task_date: date) -> Task:
     try:
