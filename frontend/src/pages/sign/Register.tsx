@@ -1,5 +1,5 @@
 import PageWrapper from "../../components/PageWrapper";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { toast } from "react-toastify";
 import TextInputFormAuth from "../../components/Form/TextInputFormAuth";
 import ButtonSubmitFormAuth from "../../components/Form/ButtonSubmitFormAuth";
@@ -13,6 +13,7 @@ type FormState = {
 };
 
 const Register = () => {
+  const navigate = useNavigate();
   const handleSubmit = useCallback(
     async (
       _previousState: FormState | null,
@@ -33,8 +34,9 @@ const Register = () => {
             "Content-Type": "multipart/form-data",
           },
         });
-        if (response.status === 200) {
+        if (response.status === 201) {
           toast.success("Registration successful");
+          navigate("/login");
         }
       } catch (e: unknown) {
         if (e instanceof Error) console.error(e.message);

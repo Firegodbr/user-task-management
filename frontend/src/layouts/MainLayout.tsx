@@ -1,13 +1,19 @@
 import { Outlet } from "react-router";
 import { NavLink, Link } from "react-router";
 import { motion } from "framer-motion";
+import { useAuth } from "../context/AuthContext";
 
-const pages = [
+const basePages = [
   { url: "/", page: "Home" },
   { url: "/about", page: "About" },
 ];
 
 const MainLayout = () => {
+  const { token } = useAuth();
+
+  const pages = token
+    ? [...basePages, { url: "/dashboard", page: "Dashboard" }]
+    : basePages;
   return (
     <div className="min-h-screen flex flex-col bg-linear-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100">
       {/* Header */}

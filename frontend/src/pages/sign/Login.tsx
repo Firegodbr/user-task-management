@@ -5,6 +5,8 @@ import TextInputFormAuth from "../../components/Form/TextInputFormAuth";
 import ButtonSubmitFormAuth from "../../components/Form/ButtonSubmitFormAuth";
 import api from "../../lib/api";
 import { useAuth } from "../../context/AuthContext";
+import { toast } from "react-toastify";
+import { AxiosError } from "axios";
 interface FormState {
   username: string;
   password: string;
@@ -30,10 +32,17 @@ const Login = () => {
         if (response.status === 200) {
           const { access_token } = response.data;
           login(access_token);
-          navigate("/dashboard")
+          navigate("/dashboard");
+        } else {
         }
       } catch (error: unknown) {
-        if (error instanceof Error) console.log(error.message);
+        if (error instanceof AxiosError) {
+          toast.error(error.response?.data?.detail ?? "Login failed");
+        } else if (error instanceof Error) {
+          toast.error(error.message);
+        } else {
+          toast.error("An unknown error occurred");
+        }
       }
       return { username, password };
     },
