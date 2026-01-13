@@ -14,7 +14,8 @@ class User(Base):
     role = Column(String(20), default="user", nullable=False)
     disabled = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    tasks = relationship("Task", back_populates="user")
+    tasks = relationship("Task", back_populates="user", cascade="all, delete-orphan")
+    refresh_tokens = relationship("RefreshToken",back_populates="user", cascade="all, delete-orphan",)
 
     def __repr__(self):
         return f"<User(username={self.username}, role={self.role})>"

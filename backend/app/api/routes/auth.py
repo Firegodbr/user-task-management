@@ -1,18 +1,21 @@
 from fastapi.routing import APIRouter
-from fastapi import Body, Depends, Form, HTTPException, status, Query
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi import Depends, HTTPException, status, Query, Request, Response
+from fastapi.security import OAuth2PasswordRequestForm
 from app.db.db import get_session
 from app.db.user import add_user, get_username
-from app.core.security import get_password_hash
+from app.models.refresh_tokens import RefreshToken
+from app.models.user import User as UserModel
+from app.core.security import hash_token, create_refresh_token, create_csrf, verify_csrf, create_access_token, hash_password
 from typing import Annotated
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.api.schema.auth import Token, User, RegisterRequest, ResponseBoolean
-from app.core.settings import settings
-from app.utils.auth import create_access_token, authenticate_user, get_current_active_user
-from app.core.security import hash_password
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
-from datetime import timedelta
+from app.api.schema.auth import User, RegisterRequest, ResponseBoolean
+from app.core.settings import settings
+from app.utils.auth import authenticate_user, get_current_user
+from datetime import timedelta, datetime, timezone
 from loguru import logger
+
 router = APIRouter(tags=["Auth"])
 
 
@@ -42,25 +45,192 @@ async def check_user_exists(username: str = Query(..., description="Username for
 
 @router.post("/token")
 async def login_for_access_token(
-    form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: AsyncSession = Depends(get_session),
-) -> Token:
+    response: Response,
+    form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
+    db: AsyncSession = Depends(get_session),
+):
     user = await authenticate_user(db, form_data.username, form_data.password)
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    access_token_expires = timedelta(
-        minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = await create_access_token(
-        data={"sub": user.username, "role": user.role}, expires_delta=access_token_expires
+        raise HTTPException(status_code=401, detail="Incorrect credentials")
+
+    # ---- ACCESS TOKEN (JWT) ----
+    access_token = create_access_token(
+        data={"sub": user.username, "role": user.role},
+        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
     )
-    return Token(access_token=access_token, token_type="bearer")
+
+    # ---- REFRESH TOKEN (OPAQUE) ----
+    raw_refresh_token = create_refresh_token()
+    refresh_token_hash = hash_token(raw_refresh_token)
+
+    refresh_token_db = RefreshToken(
+        user_id=user.id,
+        token_hash=refresh_token_hash,
+        expires_at=datetime.now(timezone.utc)
+        + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+    )
+
+    db.add(refresh_token_db)
+    await db.commit()
+
+    # ---- COOKIES ----
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
+
+    response.set_cookie(
+        key="refresh_token",
+        value=raw_refresh_token,
+        httponly=True,
+        secure=True,
+        samesite="strict",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+    )
+
+    csrf_token = create_csrf()
+
+    response.set_cookie(
+        key="csrf_token",
+        value=csrf_token,
+        httponly=False,   # so JS can read it
+        secure=True,      # only over HTTPS
+        samesite="strict",  # prevents cross-site sending
+        path="/",         # available for all endpoints
+    )
+
+    return {"access_token": access_token, "token_type": "bearer"}
 
 
-@router.get("/users/me/", response_model=User)
-async def read_users_me(
-    current_user: Annotated[User, Depends(get_current_active_user)],
+@router.post("/refresh", dependencies=[Depends(verify_csrf), Depends(get_current_user)])
+async def refresh_token(
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_session),
+
 ):
-    return current_user
+    # 1️⃣ Read refresh token from cookie
+    raw_refresh_token = request.cookies.get("refresh_token")
+    if not raw_refresh_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+
+    token_hash = hash_token(raw_refresh_token)
+
+    # 2️⃣ Load refresh token from DB
+    result = await db.execute(
+        select(RefreshToken).where(RefreshToken.token_hash == token_hash)
+    )
+    stored_token: RefreshToken | None = result.scalar_one_or_none()
+
+    # Token not found → invalid / reused
+    if not stored_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+
+    # 3️⃣ Check revoked / expired
+    now = datetime.now(timezone.utc)
+    # Handle timezone-naive expires_at from DB
+    expires_at = stored_token.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    if stored_token.revoked_at is not None or expires_at < now:
+        # 🚨 Possible token reuse → revoke all sessions for this user
+        result = await db.execute(
+            select(RefreshToken).where(
+                RefreshToken.user_id == stored_token.user_id,
+                RefreshToken.revoked_at.is_(None),
+            )
+        )
+        tokens = result.scalars().all()
+        for token in tokens:
+            token.revoked_at = now
+
+        await db.commit()
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+
+    # 4️⃣ Load user
+    user = await db.get(UserModel, stored_token.user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+
+    # 5️⃣ ROTATE refresh token
+    new_refresh_token = create_refresh_token()
+    new_refresh_token_hash = hash_token(new_refresh_token)
+
+    new_db_token = RefreshToken(
+        user_id=user.id,
+        token_hash=new_refresh_token_hash,
+        expires_at=datetime.now(timezone.utc)
+        + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+    )
+
+    db.add(new_db_token)
+
+    # Revoke old token
+    stored_token.revoked_at = datetime.now(timezone.utc)
+    stored_token.replaced_by_token_id = new_db_token.id
+
+    await db.commit()
+
+    # 6️⃣ Issue new access token (JWT)
+    access_token = create_access_token(
+        data={
+            "sub": user.username,
+            "role": user.role,
+        },
+        expires_delta=timedelta(
+            minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
+        ),
+    )
+
+    # 7️⃣ Set new refresh cookie
+    response.set_cookie(
+        key="refresh_token",
+        value=new_refresh_token,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite="strict",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        path="/",
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+    }
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(verify_csrf), Depends(get_current_user)])
+async def logout(
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_session)
+):
+    raw_refresh_token = request.cookies.get("refresh_token")
+
+    if raw_refresh_token:
+        token_hash = hash_token(raw_refresh_token)
+
+        result = await db.execute(
+            select(RefreshToken)
+            .where(
+                RefreshToken.token_hash == token_hash,
+                RefreshToken.revoked_at.is_(None),
+            )
+        )
+        token = result.scalar_one_or_none()
+
+        if token:
+            token.revoked_at = datetime.now(timezone.utc)
+            await db.commit()
+
+    # Remove cookies (idempotent)
+    response.delete_cookie("access_token")
+    response.delete_cookie("refresh_token")
+    response.delete_cookie("csrf_token")
+
+    return
