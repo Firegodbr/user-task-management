@@ -1,6 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import api from "../../lib/api";
-import type { Task, TaskListResponse, TaskResponse, TaskInput } from "../../types/task";
+import type {
+  Task,
+  TaskListResponse,
+  TaskResponse,
+  TaskInput,
+} from "../../types/task";
 import { motion, AnimatePresence } from "framer-motion";
 import TaskForm from "./TaskForm";
 import TaskItem from "./TaskItem";
@@ -21,7 +26,11 @@ const TaskList = () => {
       setLoading(true);
       const response = await api.get<TaskListResponse>("/tasks/");
       if (response.data.success) {
-        setTasks(response.data.tasks);
+        setTasks(
+          response.data.tasks.sort(
+            (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+          ),
+        );
         setError(null);
       } else {
         setError(response.data.error || "Failed to fetch tasks");
@@ -38,10 +47,7 @@ const TaskList = () => {
   }, [fetchTasks]);
 
   // Pagination calculations
-  const totalPages = useMemo(
-    () => Math.ceil(tasks.length / ITEMS_PER_PAGE),
-    [tasks.length]
-  );
+  const totalPages = Math.ceil(tasks.length / ITEMS_PER_PAGE);
 
   const paginatedTasks = useMemo(() => {
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
@@ -75,29 +81,35 @@ const TaskList = () => {
         setError(err.response?.data?.detail || "Failed to create task");
       }
     },
-    [tasks.length]
+    [tasks.length],
   );
 
   // Update task
-  const handleUpdate = useCallback(async (id: number, updatedData: TaskInput) => {
-    try {
-      const response = await api.put<TaskResponse>(`/tasks/${id}`, updatedData);
-      if (response.data.success && response.data.task) {
-        setTasks((prev) => prev.map((t) => (t.id === id ? response.data.task! : t)));
-        setEditingId(null);
-        setError(null);
-      } else {
-        setError(response.data.error || "Failed to update task");
+  const handleUpdate = useCallback(
+    async (id: number, updatedData: TaskInput) => {
+      try {
+        const response = await api.put<TaskResponse>(
+          `/tasks/${id}`,
+          updatedData,
+        );
+        if (response.data.success && response.data.task) {
+          setTasks((prev) =>
+            prev.map((t) => (t.id === id ? response.data.task! : t)),
+          );
+          setEditingId(null);
+          setError(null);
+        } else {
+          setError(response.data.error || "Failed to update task");
+        }
+      } catch (err: any) {
+        setError(err.response?.data?.detail || "Failed to update task");
       }
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "Failed to update task");
-    }
-  }, []);
+    },
+    [],
+  );
 
   // Delete task
   const handleDelete = useCallback(async (id: number) => {
-    if (!window.confirm("Are you sure you want to delete this task?")) return;
-
     try {
       const response = await api.delete<TaskResponse>(`/tasks/${id}`);
       if (response.data.success) {
@@ -111,21 +123,20 @@ const TaskList = () => {
     }
   }, []);
 
-  const handleEdit = useCallback((id: number) => {
+  const handleEdit = (id: number) => {
     setEditingId(id);
-  }, []);
+  };
 
-  const handleCancelEdit = useCallback(() => {
+  const handleCancelEdit = () => {
     setEditingId(null);
-  }, []);
-
-  const handlePageChange = useCallback((page: number) => {
+  };
+  const handlePageChange = (page: number) => {
     setCurrentPage(page);
-  }, []);
+  };
 
-  const toggleCreating = useCallback(() => {
+  const toggleCreating = () => {
     setIsCreating((prev) => !prev);
-  }, []);
+  };
 
   if (loading) {
     return (
@@ -169,7 +180,9 @@ const TaskList = () => {
           exit={{ opacity: 0, height: 0 }}
           className="bg-slate-700/50 p-4 rounded-lg border border-slate-600"
         >
-          <h3 className="text-lg font-semibold text-indigo-400 mb-3">Create New Task</h3>
+          <h3 className="text-lg font-semibold text-indigo-400 mb-3">
+            Create New Task
+          </h3>
           <TaskForm onSubmit={handleCreate} />
         </motion.div>
       )}

@@ -1,8 +1,9 @@
-import { useCallback, memo } from "react";
+import { memo } from "react";
 import type { Task, TaskInput } from "../../types/task";
 import { motion } from "framer-motion";
 import TaskForm from "./TaskForm";
-
+import DeleteButton from "../Root/DeleteButton";
+import EditButton from "../Root/EditButton";
 // Memoized Task Item Component
 const TaskItem = memo(
   ({
@@ -20,20 +21,16 @@ const TaskItem = memo(
     onUpdate: (id: number, data: TaskInput) => void;
     onCancelEdit: () => void;
   }) => {
-    const handleUpdate = useCallback(
-      (data: TaskInput) => {
-        onUpdate(task.id, data);
-      },
-      [task.id, onUpdate],
-    );
-
-    const handleEdit = useCallback(() => {
+    const handleUpdate = (data: TaskInput) => {
+      onUpdate(task.id, data);
+    };
+    const handleEdit = () => {
       onEdit(task.id);
-    }, [task.id, onEdit]);
+    };
 
-    const handleDelete = useCallback(() => {
+    const handleDelete = () => {
       onDelete(task.id);
-    }, [task.id, onDelete]);
+    };
 
     return (
       <motion.div
@@ -60,18 +57,8 @@ const TaskItem = memo(
               </p>
             </div>
             <div className="flex gap-2">
-              <button
-                onClick={handleEdit}
-                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition-colors"
-              >
-                Edit
-              </button>
-              <button
-                onClick={handleDelete}
-                className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded transition-colors"
-              >
-                Delete
-              </button>
+              <EditButton handleEdit={handleEdit} />
+              <DeleteButton handleDelete={handleDelete} />
             </div>
           </div>
         )}
