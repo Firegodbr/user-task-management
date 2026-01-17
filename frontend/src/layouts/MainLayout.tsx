@@ -9,9 +9,9 @@ const basePages = [
 ];
 
 const MainLayout = () => {
-  const { token } = useAuth();
+  const { jwtToken } = useAuth();
 
-  const pages = token
+  const pages = jwtToken
     ? [...basePages, { url: "/dashboard", page: "Dashboard" }]
     : basePages;
   return (

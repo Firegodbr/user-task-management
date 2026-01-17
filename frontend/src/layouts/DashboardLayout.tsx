@@ -9,11 +9,15 @@ const basePages = [
 ];
 
 const DashboardLayout = () => {
-  const { token } = useAuth();
+  const { jwtToken, logout } = useAuth();
 
-  const pages = token
-    ? [...basePages, { url: "/dashboard", page: "Dashboard" }]
-    : basePages;
+  // Check localStorage directly to avoid flash during auth check
+  const hasStoredAuth = !!localStorage.getItem("jwt_payload");
+
+  const pages =
+    jwtToken || hasStoredAuth
+      ? [...basePages, { url: "/dashboard", page: "Dashboard" }]
+      : basePages;
   return (
     <div className="min-h-screen flex flex-col bg-linear-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100">
       {/* Header */}
@@ -55,6 +59,12 @@ const DashboardLayout = () => {
                 )}
               </NavLink>
             ))}
+            <div
+              className="relative px-1 pb-1 transition-colors text-slate-300 hover:text-indigo-300 cursor-pointer"
+              onClick={logout}
+            >
+              Logout
+            </div>
           </div>
         </nav>
       </header>

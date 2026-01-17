@@ -204,6 +204,22 @@ async def refresh_token(
     }
 
 
+@router.get("/me", response_model=User, dependencies=[Depends(get_current_user)])
+async def get_current_user_info(
+    current_user: Annotated[UserModel, Depends(get_current_user)]
+):
+    """
+    Returns the current authenticated user's information.
+    Used by frontend to verify authentication status.
+    """
+    return User(
+        id=current_user.id,
+        username=current_user.username,
+        role=current_user.role,
+        disabled=current_user.disabled
+    )
+
+
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(verify_csrf), Depends(get_current_user)])
 async def logout(
     request: Request,
@@ -234,3 +250,6 @@ async def logout(
     response.delete_cookie("csrf_token")
 
     return
+
+
+

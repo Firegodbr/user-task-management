@@ -7,9 +7,9 @@ import Login from "./pages/sign/Login";
 import Register from "./pages/sign/Register";
 import Dashboard from "./pages/dashboard/Dashboard";
 import Task from "./pages/dashboard/Task";
-import TaskCreate from "./pages/dashboard/TaskCreate";
-import RequireAuth from "./middleware/RequiredAuth";
 import { AnimatePresence } from "framer-motion";
+import RequireAuth from "./middleware/RequiredAuth";
+import RequireAdmin from "./middleware/RequiredAdmin";
 function App() {
   const location = useLocation();
   return (
@@ -24,9 +24,9 @@ function App() {
         <Route element={<RequireAuth />}>
           <Route path="dashboard" element={<DashboardLayout />}>
             <Route index element={<Dashboard />} />
-            <Route path="create-task" element={<TaskCreate />} />
-            <Route path=":task" element={<Task />} />
+            <Route path="task" element={<Task />} />
           </Route>
+          <Route element={<RequireAdmin />}></Route>
         </Route>
       </Routes>
     </AnimatePresence>

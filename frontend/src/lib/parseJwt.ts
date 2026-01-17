@@ -13,7 +13,3 @@ export function parseJwt(token: string): JwtPayload {
   const payload = atob(base64);
   return JSON.parse(payload);
 }
-
-export const isTokenExpired = (exp: number): boolean => {
-  return Date.now() >= exp * 1000;
-};

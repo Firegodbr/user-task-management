@@ -88,8 +88,8 @@ api.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError);
 
-        // Hard logout
-        window.location.href = "/login";
+        // Dispatch logout event for AuthContext to handle
+        window.dispatchEvent(new Event("auth:logout"));
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

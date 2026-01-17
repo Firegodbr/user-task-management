@@ -2,8 +2,8 @@ import PageWrapper from "../components/PageWrapper";
 import { useAuth } from "../context/AuthContext";
 import MainButtonLink from "../components/Root/MainButtonLink";
 const Root = () => {
-  const { token } = useAuth();
-  const isLoggedIn = !!token;
+  const { jwtToken } = useAuth();
+  const isLoggedIn = !!jwtToken;
 
   return (
     <PageWrapper>
