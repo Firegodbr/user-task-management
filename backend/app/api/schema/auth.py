@@ -40,9 +40,35 @@ class RegisterRequest(BaseModel):
 
     @field_validator("password")
     @classmethod
-    def password_must_have_special_chars(cls, password: str):
-        if not re.match("^(?=.*[!@#$%^&*(),.?:|<>]).+$", password):
-            raise ValueError("Missing special char on password")
+    def password_complexity_check(cls, password: str):
+        """
+        Enforce strong password requirements:
+        - Minimum 12 characters
+        - At least one uppercase letter
+        - At least one lowercase letter
+        - At least one digit
+        - At least one special character
+        """
+        if len(password) < 12:
+            raise ValueError("Password must be at least 12 characters long")
+
+        if not re.search(r"[A-Z]", password):
+            raise ValueError("Password must contain at least one uppercase letter")
+
+        if not re.search(r"[a-z]", password):
+            raise ValueError("Password must contain at least one lowercase letter")
+
+        if not re.search(r"\d", password):
+            raise ValueError("Password must contain at least one digit")
+
+        if not re.search(r"[!@#$%^&*(),.?:|<>_\-+=\[\]{};'\"\\\/~`]", password):
+            raise ValueError("Password must contain at least one special character (!@#$%^&* etc.)")
+
+        # Optional: Check for common weak passwords
+        common_passwords = ["Password123!", "Admin123456!", "Welcome123!"]
+        if password in common_passwords:
+            raise ValueError("Password is too common. Please choose a stronger password")
+
         return password
 
     @classmethod

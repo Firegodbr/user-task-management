@@ -6,6 +6,13 @@ from app.db.user import add_user, get_username
 from app.models.refresh_tokens import RefreshToken
 from app.models.user import User as UserModel
 from app.core.security import hash_token, create_refresh_token, create_csrf, verify_csrf, create_access_token, hash_password
+from app.core.lockout import (
+    record_login_attempt,
+    handle_failed_login,
+    handle_successful_login,
+    check_account_locked
+)
+from app.core.audit import AuditLogger
 from typing import Annotated
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -25,10 +32,17 @@ limiter = Limiter(key_func=get_remote_address)
 @router.post("/register", response_model=User, status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/15minutes")
 async def register_user(request: Request, form_data: RegisterRequest = Depends(RegisterRequest.as_form), db: AsyncSession = Depends(get_session)):
+    client_ip = request.client.host if request.client else "unknown"
+
     exist_user = await get_username(db, form_data.username)
     if exist_user:
         raise HTTPException(detail="User already exists", status_code=400)
+
     user = await add_user(db, form_data.username, hash_password(form_data.password))
+
+    # Audit log registration
+    AuditLogger.registration(user.username, client_ip)
+
     return user
 
 
@@ -55,9 +69,48 @@ async def login_for_access_token(
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: AsyncSession = Depends(get_session),
 ):
+    # Get client IP address
+    client_ip = request.client.host if request.client else "unknown"
+
+    # First, check if user exists to determine lockout status
+    user_check = await get_username(db, form_data.username)
+
+    # Check if account is locked BEFORE attempting authentication
+    if user_check:
+        is_locked, lock_message = await check_account_locked(user_check)
+        if is_locked:
+            # Record failed attempt due to lockout
+            await record_login_attempt(db, form_data.username, False, client_ip)
+            AuditLogger.login_failure(form_data.username, client_ip, reason="account_locked")
+            logger.warning(f"Login attempt for locked account: {form_data.username} from {client_ip}")
+            raise HTTPException(status_code=423, detail=lock_message)  # 423 Locked
+
+    # Attempt authentication
     user = await authenticate_user(db, form_data.username, form_data.password)
+
     if not user:
+        # Record failed login attempt
+        await record_login_attempt(db, form_data.username, False, client_ip)
+        AuditLogger.login_failure(form_data.username, client_ip, reason="invalid_credentials")
+
+        # Handle failed login (increment counter, lock if needed)
+        if user_check:
+            await handle_failed_login(db, user_check, client_ip)
+
+            # Check if this failure caused a lockout
+            is_locked, lock_message = await check_account_locked(user_check)
+            if is_locked:
+                logger.warning(f"Account locked: {form_data.username} due to too many failed attempts")
+                raise HTTPException(status_code=423, detail=lock_message)
+
         raise HTTPException(status_code=401, detail="Incorrect credentials")
+
+    # Successful login - record it and reset failed attempts
+    await record_login_attempt(db, form_data.username, True, client_ip)
+    await handle_successful_login(db, user)
+    user_agent = request.headers.get("user-agent", "unknown")
+    AuditLogger.login_success(user.username, client_ip, user_agent)
+    logger.info(f"Successful login: {user.username} from {client_ip}")
 
     # ---- CLEANUP OLD TOKENS ----
     # Delete only expired tokens for this user (keep revoked for audit)
@@ -167,6 +220,12 @@ async def refresh_token(
 
     if stored_token.revoked_at is not None or expires_at < now:
         # 🚨 Possible token reuse → revoke all sessions for this user
+        # Audit log security incident
+        client_ip = request.client.host if request.client else "unknown"
+        user_obj = await db.get(UserModel, stored_token.user_id)
+        if user_obj:
+            AuditLogger.token_reuse_detected(user_obj.username, client_ip)
+
         result = await db.execute(
             select(RefreshToken).where(
                 RefreshToken.user_id == stored_token.user_id,
@@ -250,6 +309,20 @@ async def refresh_token(
         path="/",
     )
 
+    new_csrf_token = create_csrf()
+    response.set_cookie(
+        key="csrf_token",
+        value=new_csrf_token,
+        httponly=False,   # JS needs to read it
+        secure=settings.COOKIE_SECURE,
+        samesite="strict",
+        path="/",
+    )
+
+    # Audit log token refresh
+    client_ip = request.client.host if request.client else "unknown"
+    AuditLogger.token_refresh(user.username, client_ip)
+
     return {
         "access_token": access_token,
         "token_type": "bearer",
@@ -276,8 +349,11 @@ async def get_current_user_info(
 async def logout(
     request: Request,
     response: Response,
+    current_user: Annotated[UserModel, Depends(get_current_user)],
     db: AsyncSession = Depends(get_session)
 ):
+    client_ip = request.client.host if request.client else "unknown"
+
     raw_refresh_token = request.cookies.get("refresh_token")
 
     if raw_refresh_token:
@@ -295,6 +371,8 @@ async def logout(
         if token:
             token.revoked_at = datetime.now(timezone.utc)
             await db.commit()
+
+    AuditLogger.logout(current_user.username, client_ip)
 
     # Remove cookies (idempotent)
     response.delete_cookie("access_token")
