@@ -9,9 +9,12 @@ from app.utils.auth import get_admin_user
 from app.models.user import User as UserModel
 from app.db.db import get_session
 from app.db.user import get_users
-from app.api.schema.admin import UsersResponse
+from app.api.schema.admin import UsersResponse, CSVFilesResponse, CSVFile, CSVDataResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Annotated
+import csv
+import os
+from datetime import datetime
 router = APIRouter(tags=["Admin"])
 magika = Magika()
 UPLOAD_DIR = Path("uploads")
@@ -84,3 +87,67 @@ async def get_all_users(current_user: Annotated[UserModel, Depends(get_admin_use
     except Exception as e:
         raise HTTPException(detail=str(e), status_code=status.HTTP_400_BAD_REQUEST)
     return UsersResponse(users=users, success=True)
+
+
+@router.get("/csv-files", response_model=CSVFilesResponse)
+async def list_csv_files(_: Annotated[UserModel, Depends(get_admin_user)]):
+    """List all uploaded CSV files"""
+    try:
+        files = []
+        for file_path in UPLOAD_DIR.glob("*.csv"):
+            stat = file_path.stat()
+            files.append(CSVFile(
+                filename=file_path.name,
+                size=stat.st_size,
+                uploaded_at=datetime.fromtimestamp(stat.st_mtime).isoformat()
+            ))
+        # Sort by upload time, newest first
+        files.sort(key=lambda x: x.uploaded_at, reverse=True)
+        return CSVFilesResponse(files=files, success=True)
+    except Exception as e:
+        raise HTTPException(detail=str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@router.get("/csv-data/{filename}", response_model=CSVDataResponse)
+async def get_csv_data(
+    filename: str,
+    _: Annotated[UserModel, Depends(get_admin_user)],
+    page: int = 1,
+    page_size: int = 100
+):
+    """Get CSV data with pagination for virtualization"""
+    file_path = UPLOAD_DIR / filename
+
+    # Security: prevent directory traversal
+    if not file_path.resolve().parent == UPLOAD_DIR.resolve():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid filename")
+
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File not found")
+
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            reader = csv.reader(f)
+            headers = next(reader)
+
+            # Count total rows
+            all_rows = list(reader)
+            total_rows = len(all_rows)
+
+            # Calculate pagination
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+
+            # Get paginated data
+            paginated_rows = all_rows[start_idx:end_idx]
+
+            return CSVDataResponse(
+                headers=headers,
+                data=paginated_rows,
+                total_rows=total_rows,
+                page=page,
+                page_size=page_size,
+                success=True
+            )
+    except Exception as e:
+        raise HTTPException(detail=str(e), status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)

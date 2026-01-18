@@ -4,6 +4,7 @@ import Root from "./pages/Root";
 import About from "./pages/About";
 import Login from "./pages/sign/Login";
 import Register from "./pages/sign/Register";
+import AdminPage from "./pages/admin/Admin";
 import Dashboard from "./pages/dashboard/Dashboard";
 import { AnimatePresence } from "framer-motion";
 import RequireAuth from "./middleware/RequiredAuth";
@@ -22,7 +23,9 @@ function App() {
             <Route path="dashboard">
               <Route index element={<Dashboard />} />
             </Route>
-            <Route path="admin" element={<RequireAdmin />}></Route>
+            <Route path="admin" element={<RequireAdmin />}>
+              <Route index element={<AdminPage />} />
+            </Route>
           </Route>
         </Route>
       </Routes>
