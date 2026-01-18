@@ -1,5 +1,4 @@
 import { Route, Routes, useLocation } from "react-router";
-import DashboardLayout from "./layouts/DashboardLayout";
 import MainLayout from "./layouts/MainLayout";
 import Root from "./pages/Root";
 import About from "./pages/About";
@@ -19,12 +18,12 @@ function App() {
           <Route path="about" element={<About />} />
           <Route path="login" element={<Login />} />
           <Route path="register" element={<Register />} />
-        </Route>
-        <Route element={<RequireAuth />}>
-          <Route path="dashboard" element={<DashboardLayout />}>
-            <Route index element={<Dashboard />} />
+          <Route element={<RequireAuth />}>
+            <Route path="dashboard">
+              <Route index element={<Dashboard />} />
+            </Route>
+            <Route path="admin" element={<RequireAdmin />}></Route>
           </Route>
-          <Route element={<RequireAdmin />}></Route>
         </Route>
       </Routes>
     </AnimatePresence>

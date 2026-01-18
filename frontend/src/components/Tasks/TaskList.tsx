@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import api from "../../lib/api";
 import type {
   Task,
@@ -6,31 +6,32 @@ import type {
   TaskResponse,
   TaskInput,
 } from "../../types/task";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import TaskForm from "./TaskForm";
-import TaskItem from "./TaskItem";
-import Pagination from "./Pagination";
-import { ITEMS_PER_PAGE } from "./constants";
+import TaskTable from "./TaskTable";
 
 const TaskList = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalTasks, setTotalTasks] = useState(0);
+  const pageSize = 10;
 
-  // Fetch all tasks
-  const fetchTasks = useCallback(async () => {
+  // Fetch paginated tasks
+  const fetchTasks = useCallback(async (page: number = 1) => {
     try {
       setLoading(true);
-      const response = await api.get<TaskListResponse>("/tasks/");
+      const response = await api.get<TaskListResponse>("/tasks/", {
+        params: { page, page_size: pageSize },
+      });
       if (response.data.success) {
-        setTasks(
-          response.data.tasks.sort(
-            (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-          ),
-        );
+        setTasks(response.data.tasks);
+        setTotalPages(response.data.total_pages);
+        setTotalTasks(response.data.total);
+        setCurrentPage(response.data.page);
         setError(null);
       } else {
         setError(response.data.error || "Failed to fetch tasks");
@@ -43,37 +44,18 @@ const TaskList = () => {
   }, []);
 
   useEffect(() => {
-    fetchTasks();
-  }, [fetchTasks]);
+    fetchTasks(currentPage);
+  }, [fetchTasks, currentPage]);
 
-  // Pagination calculations
-  const totalPages = Math.ceil(tasks.length / ITEMS_PER_PAGE);
-
-  const paginatedTasks = useMemo(() => {
-    const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    const end = start + ITEMS_PER_PAGE;
-    return tasks.slice(start, end);
-  }, [tasks, currentPage]);
-
-  // Reset to page 1 if current page is out of bounds
-  useEffect(() => {
-    if (currentPage > totalPages && totalPages > 0) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
-
-  // Create task
   const handleCreate = useCallback(
     async (formData: TaskInput) => {
       try {
         const response = await api.post<TaskResponse>("/tasks/", formData);
         if (response.data.success && response.data.task) {
-          setTasks((prev) => [...prev, response.data.task!]);
           setIsCreating(false);
           setError(null);
-          // Go to last page to see new task
-          const newTotalPages = Math.ceil((tasks.length + 1) / ITEMS_PER_PAGE);
-          setCurrentPage(newTotalPages);
+          // Refresh current page to show new task
+          await fetchTasks(currentPage);
         } else {
           setError(response.data.error || "Failed to create task");
         }
@@ -81,58 +63,8 @@ const TaskList = () => {
         setError(err.response?.data?.detail || "Failed to create task");
       }
     },
-    [tasks.length],
+    [currentPage, fetchTasks],
   );
-
-  // Update task
-  const handleUpdate = useCallback(
-    async (id: number, updatedData: TaskInput) => {
-      try {
-        const response = await api.put<TaskResponse>(
-          `/tasks/${id}`,
-          updatedData,
-        );
-        if (response.data.success && response.data.task) {
-          setTasks((prev) =>
-            prev.map((t) => (t.id === id ? response.data.task! : t)),
-          );
-          setEditingId(null);
-          setError(null);
-        } else {
-          setError(response.data.error || "Failed to update task");
-        }
-      } catch (err: any) {
-        setError(err.response?.data?.detail || "Failed to update task");
-      }
-    },
-    [],
-  );
-
-  // Delete task
-  const handleDelete = useCallback(async (id: number) => {
-    try {
-      const response = await api.delete<TaskResponse>(`/tasks/${id}`);
-      if (response.data.success) {
-        setTasks((prev) => prev.filter((t) => t.id !== id));
-        setError(null);
-      } else {
-        setError(response.data.error || "Failed to delete task");
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.detail || "Failed to delete task");
-    }
-  }, []);
-
-  const handleEdit = (id: number) => {
-    setEditingId(id);
-  };
-
-  const handleCancelEdit = () => {
-    setEditingId(null);
-  };
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-  };
 
   const toggleCreating = () => {
     setIsCreating((prev) => !prev);
@@ -152,7 +84,7 @@ const TaskList = () => {
         <div>
           <h2 className="text-2xl font-bold text-indigo-400">My Tasks</h2>
           <p className="text-sm text-slate-400 mt-1">
-            {tasks.length} {tasks.length === 1 ? "task" : "tasks"} total
+            {totalTasks} {totalTasks === 1 ? "task" : "tasks"} total
           </p>
         </div>
         <button
@@ -187,35 +119,15 @@ const TaskList = () => {
         </motion.div>
       )}
 
-      <div className="space-y-3">
-        {tasks.length === 0 ? (
-          <div className="text-center py-12 text-slate-400">
-            No tasks yet. Create your first task to get started!
-          </div>
-        ) : (
-          <>
-            <AnimatePresence mode="popLayout">
-              {paginatedTasks.map((task) => (
-                <TaskItem
-                  key={task.id}
-                  task={task}
-                  isEditing={editingId === task.id}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                  onUpdate={handleUpdate}
-                  onCancelEdit={handleCancelEdit}
-                />
-              ))}
-            </AnimatePresence>
-
-            <Pagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              onPageChange={handlePageChange}
-            />
-          </>
-        )}
-      </div>
+      <TaskTable
+        tasks={tasks}
+        setTasks={setTasks}
+        setError={setError}
+        currentPage={currentPage}
+        totalPages={totalPages}
+        onPageChange={setCurrentPage}
+        fetchTasks={fetchTasks}
+      />
     </div>
   );
 };

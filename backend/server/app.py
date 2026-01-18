@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from loguru import logger
@@ -7,6 +7,9 @@ from app.api.routes.task import router as task_router
 from app.api.routes.auth import router as auth_router
 from contextlib import asynccontextmanager
 from app.core.settings import settings
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 
 @asynccontextmanager
@@ -19,8 +22,15 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
 
 
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(title="User task management API",
               docs_url="/docs", redoc_url="/redocs", lifespan=lifespan)
+
+# Add rate limiter to app state
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,

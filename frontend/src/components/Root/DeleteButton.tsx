@@ -8,7 +8,7 @@ const DeleteButton = ({
   return (
     <ActionButton
       clickHandler={handleDelete}
-      text="Edit"
+      text="Delete"
       className="bg-red-600 hover:bg-red-700"
     />
   );

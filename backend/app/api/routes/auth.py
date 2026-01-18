@@ -15,12 +15,16 @@ from app.core.settings import settings
 from app.utils.auth import authenticate_user, get_current_user
 from datetime import timedelta, datetime, timezone
 from loguru import logger
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 router = APIRouter(tags=["Auth"])
+limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("/register", response_model=User, status_code=status.HTTP_201_CREATED)
-async def register_user(form_data: RegisterRequest = Depends(RegisterRequest.as_form), db: AsyncSession = Depends(get_session)):
+@limiter.limit("5/15minutes")
+async def register_user(request: Request, form_data: RegisterRequest = Depends(RegisterRequest.as_form), db: AsyncSession = Depends(get_session)):
     exist_user = await get_username(db, form_data.username)
     if exist_user:
         raise HTTPException(detail="User already exists", status_code=400)
@@ -44,7 +48,9 @@ async def check_user_exists(username: str = Query(..., description="Username for
 
 
 @router.post("/token")
+@limiter.limit("5/15minutes")
 async def login_for_access_token(
+    request: Request,
     response: Response,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: AsyncSession = Depends(get_session),
@@ -52,6 +58,27 @@ async def login_for_access_token(
     user = await authenticate_user(db, form_data.username, form_data.password)
     if not user:
         raise HTTPException(status_code=401, detail="Incorrect credentials")
+
+    # ---- CLEANUP OLD TOKENS ----
+    # Delete only expired tokens for this user (keep revoked for audit)
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        select(RefreshToken).where(
+            RefreshToken.user_id == user.id,
+        )
+    )
+    old_tokens = result.scalars().all()
+
+    for token in old_tokens:
+        # Delete only if expired
+        expires_at = token.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+        if expires_at < now:
+            await db.delete(token)
+
+    await db.commit()
 
     # ---- ACCESS TOKEN (JWT) ----
     access_token = create_access_token(
@@ -106,7 +133,8 @@ async def login_for_access_token(
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-@router.post("/refresh", dependencies=[Depends(verify_csrf), Depends(get_current_user)])
+@router.post("/refresh", dependencies=[Depends(verify_csrf)])
+@limiter.limit("10/minute")
 async def refresh_token(
     request: Request,
     response: Response,
@@ -170,9 +198,33 @@ async def refresh_token(
 
     db.add(new_db_token)
 
+    # Flush to get the new token ID
+    await db.flush()
+
     # Revoke old token
     stored_token.revoked_at = datetime.now(timezone.utc)
     stored_token.replaced_by_token_id = new_db_token.id
+
+    # Cleanup only expired tokens for this user (keep revoked for audit)
+    result = await db.execute(
+        select(RefreshToken).where(
+            RefreshToken.user_id == user.id,
+        )
+    )
+    all_tokens = result.scalars().all()
+
+    for token in all_tokens:
+        # Skip the new token we just created
+        if token.id == new_db_token.id:
+            continue
+
+        # Delete only if expired
+        expires_at = token.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+        if expires_at < now:
+            await db.delete(token)
 
     await db.commit()
 

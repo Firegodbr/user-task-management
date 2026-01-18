@@ -1,7 +1,7 @@
-from fastapi import Depends, Path, Body, HTTPException, status
+from fastapi import Depends, Path, Body, HTTPException, status, Query
 from fastapi.routing import APIRouter
 from app.db.task import get_task as get_task_db, put_task as put_task_db, delete_task as delete_task_db, add_task as add_task_db
-from app.db.user import get_tasks as get_tasks_db
+from app.db.user import get_tasks as get_tasks_db, get_tasks_count as get_tasks_count_db
 from app.db.db import get_session
 from app.api.schema.task import TaskPost, TaskResponse, TaskElement, TaskListResponse
 from app.api.schema.auth import UserInDB
@@ -52,15 +52,47 @@ async def add_task(current_user: Annotated[UserInDB, Depends(get_current_user)],
 
 
 @router.get("/", response_model=TaskListResponse)
-async def get_tasks(current_user: Annotated[UserInDB, Depends(get_current_user)], db=Depends(get_session)):
+async def get_tasks(
+    current_user: Annotated[UserInDB, Depends(get_current_user)],
+    db=Depends(get_session),
+    page: int = Query(default=1, ge=1, description="Page number (starts at 1)"),
+    page_size: int = Query(default=10, ge=1, le=100, description="Number of items per page")
+):
+    """
+    Get paginated tasks for the current user.
+
+    Args:
+        page: Page number (starts at 1)
+        page_size: Number of items per page (1-100)
+
+    Returns:
+        Paginated list of tasks with metadata
+    """
     try:
-        tasks = await get_tasks_db(db, current_user.id)
-        task_response = TaskListResponse(tasks=tasks, success=True)
+        # Calculate offset
+        skip = (page - 1) * page_size
+
+        # Get total count and tasks
+        total = await get_tasks_count_db(db, current_user.id)
+        tasks = await get_tasks_db(db, current_user.id, skip=skip, limit=page_size)
+
+        # Calculate total pages
+        total_pages = (total + page_size - 1) // page_size if total > 0 else 0
+
+        task_response = TaskListResponse(
+            tasks=tasks,
+            success=True,
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=total_pages
+        )
         return task_response
     except ValueError as ve:
-        return TaskListResponse(success=False, tasks=None, error=str(ve))
+        return TaskListResponse(success=False, tasks=[], error=str(ve))
     except Exception as e:
-        return TaskListResponse(success=False, tasks=None, error="Internal Server Error")
+        logger.error(f"Error fetching tasks: {e}")
+        return TaskListResponse(success=False, tasks=[], error="Internal Server Error")
 
 
 @router.get("/{id}", response_model=TaskResponse)

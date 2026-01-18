@@ -1,11 +1,15 @@
-import hmac
 import hashlib
 from app.core.settings import settings
 import secrets
 from datetime import timedelta, datetime, timezone
 import jwt
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError
 
 from fastapi import HTTPException, Request, status
+
+# Initialize Argon2 password hasher with secure defaults
+ph = PasswordHasher()
 
 
 def verify_csrf(request: Request):
@@ -19,16 +23,38 @@ def verify_csrf(request: Request):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
 
 
-def hash_password(password: str):
-    return hmac.new(settings.SECRET_KEY.encode("utf-8"), password.encode("utf-8"), hashlib.sha256).hexdigest()
+def hash_password(password: str) -> str:
+    """
+    Hash a password using Argon2id algorithm.
+    Argon2 is the winner of the Password Hashing Competition and provides
+    strong protection against brute-force attacks with adaptive complexity.
+    """
+    return ph.hash(password)
 
 
-def verify_password(plain_password: str, hashed_password: str):
-    pw = hash_password(plain_password)
-    return pw == hashed_password
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """
+    Verify a password against an Argon2 hash.
+    Returns True if the password matches, False otherwise.
+    """
+    try:
+        ph.verify(hashed_password, plain_password)
+
+        # Check if the hash needs rehashing (algorithm parameters updated)
+        if ph.check_needs_rehash(hashed_password):
+            # In production, you should rehash and update the database here
+            pass
+
+        return True
+    except VerifyMismatchError:
+        return False
+    except Exception:
+        # Handle any other exceptions (invalid hash format, etc.)
+        return False
 
 
-def get_password_hash(password: str):
+def get_password_hash(password: str) -> str:
+    """Alias for hash_password for compatibility."""
     return hash_password(password)
 
 

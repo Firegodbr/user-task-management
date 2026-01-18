@@ -1,7 +1,7 @@
 from app.models.user import User
 from app.models.task import Task
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import update, delete
+from sqlalchemy import update, delete, func
 from sqlalchemy.future import select
 from loguru import logger
 from typing import List
@@ -60,6 +60,42 @@ async def delete_user(db: AsyncSession, user_id: int):
         return False
 
 
-async def get_tasks(db: AsyncSession, user_id: int) -> List[Task]:
-    result = await db.execute(select(Task).filter(Task.user_id == user_id))
+async def get_tasks(db: AsyncSession, user_id: int, skip: int = 0, limit: int = 10) -> List[Task]:
+    """
+    Get paginated tasks for a user, ordered by date ascending.
+
+    Args:
+        db: Database session
+        user_id: User ID to filter tasks
+        skip: Number of records to skip (offset)
+        limit: Maximum number of records to return
+
+    Returns:
+        List of Task objects
+    """
+    result = await db.execute(
+        select(Task)
+        .filter(Task.user_id == user_id)
+        .order_by(Task.date.asc())
+        .offset(skip)
+        .limit(limit)
+    )
     return result.scalars().all()
+
+
+async def get_tasks_count(db: AsyncSession, user_id: int) -> int:
+    """
+    Get total count of tasks for a user.
+
+    Args:
+        db: Database session
+        user_id: User ID to filter tasks
+
+    Returns:
+        Total number of tasks
+    """
+    result = await db.execute(
+        select(func.count(Task.id))
+        .filter(Task.user_id == user_id)
+    )
+    return result.scalar() or 0

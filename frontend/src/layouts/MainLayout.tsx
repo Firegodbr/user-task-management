@@ -9,10 +9,19 @@ const basePages = [
 ];
 
 const MainLayout = () => {
-  const { jwtToken } = useAuth();
+  const { jwtToken, logout } = useAuth();
 
-  const pages = jwtToken
-    ? [...basePages, { url: "/dashboard", page: "Dashboard" }]
+  // Check localStorage directly to avoid flash during auth check
+  const hasAuth = jwtToken || !!localStorage.getItem("jwt_payload");
+  const isAdmin = hasAuth && jwtToken?.role === "admin";
+  const pages = hasAuth
+    ? isAdmin
+      ? [
+          ...basePages,
+          { url: "/dashboard", page: "Dashboard" },
+          { url: "/admin", page: "Admin" },
+        ]
+      : [...basePages, { url: "/dashboard", page: "Dashboard" }]
     : basePages;
   return (
     <div className="min-h-screen flex flex-col bg-linear-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100">
@@ -55,6 +64,14 @@ const MainLayout = () => {
                 )}
               </NavLink>
             ))}
+            {hasAuth ? (
+              <div
+                className="relative px-1 pb-1 transition-colors text-slate-300 hover:text-indigo-300 cursor-pointer"
+                onClick={logout}
+              >
+                Logout
+              </div>
+            ) : null}
           </div>
         </nav>
       </header>
