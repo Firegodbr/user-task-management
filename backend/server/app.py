@@ -5,6 +5,7 @@ from loguru import logger
 from app.db.db import create_db, engine
 from app.api.routes.task import router as task_router
 from app.api.routes.auth import router as auth_router
+from app.api.routes.admin import router as admin_router
 from contextlib import asynccontextmanager
 from app.core.settings import settings
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -46,5 +47,6 @@ async def root_call():
     return RedirectResponse("/docs")
 app.include_router(task_router, prefix="/tasks")
 app.include_router(auth_router, prefix="/auth")
+app.include_router(admin_router, prefix="/admin")
 
 

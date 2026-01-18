@@ -9,7 +9,7 @@ from app.models.user import User
 from app.models.login_attempts import LoginAttempt
 from app.core.audit import AuditLogger
 from loguru import logger
-
+from app.api.schema.auth import UserInDB
 # Configuration
 MAX_FAILED_ATTEMPTS = 5
 LOCKOUT_DURATION_MINUTES = 30
@@ -52,13 +52,15 @@ async def handle_failed_login(db: AsyncSession, user: User, ip_address: str = "u
     user.failed_login_attempts += 1
 
     if user.failed_login_attempts >= MAX_FAILED_ATTEMPTS:
-        user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
+        user.locked_until = datetime.now(
+            timezone.utc) + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
         logger.warning(
             f"Account locked for user {user.username} due to {user.failed_login_attempts} failed attempts. "
             f"Locked until {user.locked_until}"
         )
         # Audit log
-        AuditLogger.account_locked(user.username, ip_address, user.failed_login_attempts)
+        AuditLogger.account_locked(
+            user.username, ip_address, user.failed_login_attempts)
 
     await db.commit()
 
@@ -82,7 +84,7 @@ async def handle_successful_login(db: AsyncSession, user: User) -> None:
     await db.commit()
 
 
-async def check_account_locked(user: User) -> tuple[bool, str]:
+async def check_account_locked(user: UserInDB) -> tuple[bool, str]:
     """
     Check if an account is locked.
 
@@ -92,7 +94,7 @@ async def check_account_locked(user: User) -> tuple[bool, str]:
     Returns:
         Tuple of (is_locked, message)
     """
-    if user.is_locked():
+    if user.is_locked:
         locked_until = user.locked_until
         if locked_until.tzinfo is None:
             locked_until = locked_until.replace(tzinfo=timezone.utc)

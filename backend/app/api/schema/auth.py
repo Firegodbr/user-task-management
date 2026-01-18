@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 import re
-from fastapi import Form
+from fastapi import Form, status
+from fastapi.exceptions import HTTPException
 
 
 class Token(BaseModel):
@@ -14,9 +15,14 @@ class User(BaseModel):
     disabled: bool
     model_config = ConfigDict(from_attributes=True)
 
+
 class UserInDB(User):
     id: int
     hashed_password: str
+    is_locked: bool = False
+    locked_until: str | None = None
+    failed_login_attempts: int = 0
+    
 
 
 class ResponseBoolean(BaseModel):
@@ -35,7 +41,7 @@ class RegisterRequest(BaseModel):
     @classmethod
     def username_no_special_chars(cls, username: str):
         if not re.match("[A-Za-z0-9]", username):
-            raise ValueError("It shouldn't have special characteres")
+            raise HTTPException(detail="It shouldn't have special characteres",status_code=status.HTTP_400_BAD_REQUEST)
         return username
 
     @field_validator("password")
@@ -50,24 +56,30 @@ class RegisterRequest(BaseModel):
         - At least one special character
         """
         if len(password) < 12:
-            raise ValueError("Password must be at least 12 characters long")
+            raise HTTPException(detail="Password must be at least 12 characters long",
+                                status_code=status.HTTP_400_BAD_REQUEST)
 
         if not re.search(r"[A-Z]", password):
-            raise ValueError("Password must contain at least one uppercase letter")
+            raise HTTPException(detail="Password must contain at least one uppercase letter",
+                                status_code=status.HTTP_400_BAD_REQUEST)
 
         if not re.search(r"[a-z]", password):
-            raise ValueError("Password must contain at least one lowercase letter")
+            raise HTTPException(detail="Password must contain at least one lowercase letter",
+                                status_code=status.HTTP_400_BAD_REQUEST)
 
         if not re.search(r"\d", password):
-            raise ValueError("Password must contain at least one digit")
+            raise HTTPException(detail="Password must contain at least one digit",
+                                status_code=status.HTTP_400_BAD_REQUEST)
 
         if not re.search(r"[!@#$%^&*(),.?:|<>_\-+=\[\]{};'\"\\\/~`]", password):
-            raise ValueError("Password must contain at least one special character (!@#$%^&* etc.)")
+            raise HTTPException(detail="Password must contain at least one special character (!@#$%^&* etc.)",
+                                status_code=status.HTTP_400_BAD_REQUEST)
 
         # Optional: Check for common weak passwords
         common_passwords = ["Password123!", "Admin123456!", "Welcome123!"]
         if password in common_passwords:
-            raise ValueError("Password is too common. Please choose a stronger password")
+            raise HTTPException(detail="Password is too common. Please choose a stronger password",
+                                status_code=status.HTTP_400_BAD_REQUEST)
 
         return password
 

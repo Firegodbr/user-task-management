@@ -93,6 +93,37 @@ async def get_current_user(
     return user
 
 
+async def get_admin_user(request: Request,
+                         token: Annotated[str | None, Depends(oauth2_scheme)],
+                         db: Annotated[AsyncSession, Depends(get_session)]):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    access_token = token
+    if not access_token:
+        access_token = request.cookies.get("access_token")
+
+    if not access_token:
+        raise credentials_exception
+
+    try:
+        payload = decode_jwt(access_token)
+        username: str | None = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+        token_data = TokenData(username=username)
+    except InvalidTokenError as e:
+        logger.debug(f"Token validation failed: {e}")
+        raise credentials_exception
+
+    user = await get_username(db, username=token_data.username)
+    if user is None or user.role != "admin":
+        raise credentials_exception
+    return user
+
+
 async def get_current_active_user(
     current_user: Annotated[User, Depends(get_current_user)],
 ):
@@ -100,5 +131,3 @@ async def get_current_active_user(
     if current_user.disabled:
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
-
-

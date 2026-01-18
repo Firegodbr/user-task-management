@@ -27,7 +27,7 @@ async def get_username(db: AsyncSession, username: str) -> UserInDB | None:
     if not user_db:
         return None
 
-    return UserInDB(username=user_db.username, role=user_db.role, disabled=user_db.disabled, hashed_password=user_db.hashed_password, id=user_db.id)
+    return UserInDB(username=user_db.username, role=user_db.role, disabled=user_db.disabled, hashed_password=user_db.hashed_password, id=user_db.id, is_locked=user_db.is_locked(), locked_until=user_db.locked_until)
 
 
 async def put_user_pw(db: AsyncSession, user_id: int, pw: str) -> bool:
@@ -99,3 +99,7 @@ async def get_tasks_count(db: AsyncSession, user_id: int) -> int:
         .filter(Task.user_id == user_id)
     )
     return result.scalar() or 0
+
+async def get_users(db: AsyncSession) -> List[User]:
+    result = await db.execute(select(User))
+    return result.scalars().all()

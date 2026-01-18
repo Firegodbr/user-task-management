@@ -6,6 +6,7 @@ import ButtonSubmitFormAuth from "../../components/Form/ButtonSubmitFormAuth";
 import api from "../../lib/api";
 import { useCallback, useActionState, startTransition } from "react";
 import { validateRegistration } from "../../lib/validation";
+import { AxiosError } from "axios";
 type FormState = {
   username: string;
   password: string;
@@ -17,7 +18,7 @@ const Register = () => {
   const handleSubmit = useCallback(
     async (
       _previousState: FormState | null,
-      formData: FormData
+      formData: FormData,
     ): Promise<null> => {
       const username = String(formData.get("username") ?? "");
       const password = String(formData.get("password") ?? "");
@@ -38,12 +39,18 @@ const Register = () => {
           toast.success("Registration successful");
           navigate("/login");
         }
-      } catch (e: unknown) {
-        if (e instanceof Error) console.error(e.message);
+      } catch (error: unknown) {
+        if (error instanceof AxiosError) {
+          toast.error(error.response?.data?.detail ?? "Login failed");
+        } else if (error instanceof Error) {
+          toast.error(error.message);
+        } else {
+          toast.error("An unknown error occurred");
+        }
       }
       return null;
     },
-    []
+    [],
   );
 
   const [_formState, formAction] = useActionState(handleSubmit, {
